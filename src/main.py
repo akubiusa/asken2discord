@@ -136,17 +136,21 @@ def _post_or_edit(
     Discord への失敗時は送出せず None を返す。呼び出し側がこの項目だけを
     スキップし、サイクルの残りの処理を続けられるようにするため。
     """
-    try:
-        if slot:
-            try:
-                discord.edit_message(slot["message_id"], content, files, embeds)
-                return slot["message_id"]
-            except MessageNotFound:
-                return discord.post_message(content, files, embeds)
-        return discord.post_message(content, files, embeds)
-    except (DiscordError, requests.RequestException):
-        logger.exception("Discord post/edit failed for %s", log_context)
-        return None
+    with sentry_sdk.isolation_scope() as scope:
+        try:
+            if slot:
+                try:
+                    discord.edit_message(slot["message_id"], content, files, embeds)
+                    return slot["message_id"]
+                except MessageNotFound:
+                    return discord.post_message(content, files, embeds)
+            return discord.post_message(content, files, embeds)
+        except (DiscordError, requests.RequestException) as exc:
+            scope.clear_breadcrumbs()
+            logger.error(
+                "Discord post/edit failed for %s (%s)", log_context, type(exc).__name__
+            )
+            return None
 
 
 def run_cycle(
