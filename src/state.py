@@ -10,13 +10,10 @@ from pathlib import Path
 
 
 def load_state(path: Path) -> dict:
-    """状態ファイルを読み込む。ファイルがない、または壊れている場合は空の dict を返す。"""
+    """状態ファイルを読み込む。ファイルがない場合は空の dict を返す。"""
     if not path.exists():
         return {}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def save_state(path: Path, state: dict) -> None:
