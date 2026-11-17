@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+import requests
+
 import main
 from asken_client import MEAL_LABEL, MEAL_TYPES, DailySummary, MealRecord
 
@@ -104,6 +106,69 @@ class RunCycleRecordTest(unittest.TestCase):
             f"Failed to save record for {DATE_STR}", logs.output[0]
         )
         self.assertEqual(discord.post_message.call_count, 2)
+        self.assertEqual(state[DATE_STR]["lunch"]["message_id"], "new")
+
+    def test_写真取得に失敗した食事だけスキップして後続を続ける(self):
+        meals = _meals()
+        meals["breakfast"] = MealRecord(
+            "breakfast", "朝食", items=[ITEM], photo_urls=["/p/1"]
+        )
+        client = _client(meals)
+        client.download_photo.side_effect = requests.RequestException("boom")
+        discord = mock.Mock()
+        discord.post_message.return_value = "new"
+        state = {}
+        next_day = DATE + dt.timedelta(days=1)
+
+        with mock.patch.object(
+            main, "track_dates", return_value=[DATE, next_day]
+        ):
+            with self.assertLogs("asken2discord", level="ERROR") as logs:
+                main.run_cycle(
+                    client,
+                    discord,
+                    state,
+                    num_days=2,
+                    data_dir=self.data_dir,
+                )
+
+        self.assertIn(
+            f"Failed to download photo for {DATE_STR} breakfast",
+            logs.output[0],
+        )
+        self.assertNotIn("breakfast", state[DATE_STR])
+        self.assertEqual(state[DATE_STR]["lunch"]["message_id"], "new")
+        self.assertIn(main.SUMMARY_SLOT_KEY, state[DATE_STR])
+        self.assertIn("lunch", state[next_day.isoformat()])
+
+    def test_写真保存に失敗しても_Discord_に添付して投稿する(self):
+        meals = _meals()
+        meals["lunch"] = MealRecord(
+            "lunch", "昼食", items=[ITEM], photo_urls=["/p/1"]
+        )
+        client = _client(meals)
+        client.download_photo.return_value = b"jpeg"
+        discord = mock.Mock()
+        discord.post_message.return_value = "new"
+        state = {}
+
+        with mock.patch.object(
+            Path, "write_bytes", side_effect=OSError("disk full")
+        ):
+            with self.assertLogs("asken2discord", level="ERROR") as logs:
+                main.run_cycle(
+                    client,
+                    discord,
+                    state,
+                    num_days=1,
+                    data_dir=self.data_dir,
+                )
+
+        self.assertIn(
+            f"Failed to save photo for {DATE_STR} lunch", logs.output[0]
+        )
+        files = discord.post_message.call_args_list[0].args[1]
+        self.assertIn(f"{DATE_STR}_lunch_1.jpg", [f[0] for f in files])
         self.assertEqual(state[DATE_STR]["lunch"]["message_id"], "new")
 
     def test_サマリーは日付ごとに_1_回だけ取得する(self):
