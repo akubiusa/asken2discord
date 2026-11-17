@@ -153,6 +153,31 @@ def _post_or_edit(
             return None
 
 
+def _download_photos(
+    client: AskenClient,
+    data_dir: Path,
+    date_str: str,
+    meal_type: str,
+    meal: MealRecord,
+) -> list[tuple[str, bytes]]:
+    """食事の写真をダウンロードし、Discord 添付用の (ファイル名, バイト列) を返す。
+
+    ダウンロードの失敗は `requests.RequestException` として送出する。ローカル保存の
+    失敗はログに残すだけで続行する。保存は Discord 投稿を止める理由にならないため。
+    """
+    photo_files = []
+    for i, photo_url in enumerate(meal.photo_urls, start=1):
+        photo_bytes = client.download_photo(photo_url)
+        photo_files.append((f"{date_str}_{meal_type}_{i}.jpg", photo_bytes))
+        try:
+            photos_dir = data_dir / date_str / "photos"
+            photos_dir.mkdir(parents=True, exist_ok=True)
+            (photos_dir / f"{meal_type}_{i}.jpg").write_bytes(photo_bytes)
+        except OSError:
+            logger.exception("Failed to save photo for %s %s", date_str, meal_type)
+    return photo_files
+
+
 def run_cycle(
     client: AskenClient,
     discord: DiscordWebhookClient,
@@ -190,13 +215,11 @@ def run_cycle(
             if slot and slot["hash"] == new_hash:
                 continue
 
-            photo_files = []
-            for i, photo_url in enumerate(meal.photo_urls, start=1):
-                photo_bytes = client.download_photo(photo_url)
-                photo_files.append((f"{date_str}_{meal_type}_{i}.jpg", photo_bytes))
-                photos_dir = data_dir / date_str / "photos"
-                photos_dir.mkdir(parents=True, exist_ok=True)
-                (photos_dir / f"{meal_type}_{i}.jpg").write_bytes(photo_bytes)
+            try:
+                photo_files = _download_photos(client, data_dir, date_str, meal_type, meal)
+            except requests.RequestException:
+                logger.exception("Failed to download photo for %s %s", date_str, meal_type)
+                continue
 
             message_content, files = build_meal_message(
                 date_str=date_str,
