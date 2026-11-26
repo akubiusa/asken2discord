@@ -38,6 +38,8 @@ JST = ZoneInfo("Asia/Tokyo")
 sentry_sdk.init(
     dsn=os.environ.get("SENTRY_DSN"),
     traces_sample_rate=0.0,
+    # ローカル変数に Config (ログイン認証情報や Webhook URL) が含まれるため送信しない。
+    include_local_variables=False,
 )
 
 logging.basicConfig(
