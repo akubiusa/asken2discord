@@ -24,6 +24,7 @@ from zoneinfo import ZoneInfo
 
 import requests
 import sentry_sdk
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 from asken_client import MEAL_TYPES, AskenClient, LoginError, MealRecord
 from discord_client import DiscordError, DiscordWebhookClient, MessageNotFound
@@ -39,7 +40,10 @@ sentry_sdk.init(
     dsn=os.environ.get("SENTRY_DSN"),
     traces_sample_rate=0.0,
     # ローカル変数に Config (ログイン認証情報や Webhook URL) が含まれるため送信しない。
-    include_local_variables=False,
+    data_collection={"stack_frame_variables": False},
+    # SDK 3 は event_level の既定が None で logger.error がイベントにならない。
+    # level=None は INFO 以上のログを Sentry Logs へ送らないための指定。
+    integrations=[LoggingIntegration(level=None, event_level=logging.ERROR)],
 )
 
 logging.basicConfig(
