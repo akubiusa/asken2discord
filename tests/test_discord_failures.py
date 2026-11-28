@@ -3,21 +3,10 @@ from unittest import mock
 
 import requests
 import sentry_sdk
-from sentry_sdk.transport import Transport
 
 import main
 from discord_client import DiscordError, DiscordWebhookClient
-
-
-class EventTransport(Transport):
-    def __init__(self):
-        super().__init__()
-        self.events = []
-
-    def capture_envelope(self, envelope):
-        for item in envelope.items:
-            if item.type == "event":
-                self.events.append(item.get_event())
+from test_sentry_init import EventTransport, load_main_init_kwargs
 
 
 class DiscordFailureTest(unittest.TestCase):
@@ -28,7 +17,11 @@ class DiscordFailureTest(unittest.TestCase):
             with self.subTest(method=method):
                 transport = EventTransport()
                 sentry_client = sentry_sdk.Client(
-                    dsn="https://public@example.com/1", transport=transport
+                    **{
+                        **load_main_init_kwargs(),
+                        "dsn": "https://public@example.com/1",
+                        "transport": transport,
+                    }
                 )
                 self.addCleanup(sentry_client.close)
                 with sentry_sdk.isolation_scope():
